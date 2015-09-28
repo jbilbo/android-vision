@@ -16,12 +16,17 @@
 package com.google.android.gms.samples.vision.face.photo;
 
 import android.app.Activity;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.util.Log;
 import android.util.SparseArray;
+import android.widget.Toast;
 
+import com.google.android.gms.samples.vision.face.patch.SafeFaceDetector;
+import com.google.android.gms.vision.Detector;
 import com.google.android.gms.vision.Frame;
 import com.google.android.gms.vision.face.Face;
 import com.google.android.gms.vision.face.FaceDetector;
@@ -58,11 +63,16 @@ public class PhotoViewerActivity extends Activity {
                 .setLandmarkType(FaceDetector.ALL_LANDMARKS)
                 .build();
 
+        // This is a temporary workaround for a bug in the face detector with respect to operating
+        // on very small images.  This will be fixed in a future release.  But in the near term, use
+        // of the SafeFaceDetector class will patch the issue.
+        Detector<Face> safeDetector = new SafeFaceDetector(detector);
+
         // Create a frame from the bitmap and run face detection on the frame.
         Frame frame = new Frame.Builder().setBitmap(bitmap).build();
-        SparseArray<Face> faces = detector.detect(frame);
+        SparseArray<Face> faces = safeDetector.detect(frame);
 
-        if (!detector.isOperational()) {
+        if (!safeDetector.isOperational()) {
             // Note: The first time that an app using face API is installed on a device, GMS will
             // download a native library to the device in order to do detection.  Usually this
             // completes before the app is run for the first time.  But if that download has not yet
@@ -72,6 +82,16 @@ public class PhotoViewerActivity extends Activity {
             // available.  The detector will automatically become operational once the library
             // download completes on device.
             Log.w(TAG, "Face detector dependencies are not yet available.");
+
+            // Check for low storage.  If there is low storage, the native library will not be
+            // downloaded, so detection will not become operational.
+            IntentFilter lowstorageFilter = new IntentFilter(Intent.ACTION_DEVICE_STORAGE_LOW);
+            boolean hasLowStorage = registerReceiver(null, lowstorageFilter) != null;
+
+            if (hasLowStorage) {
+                Toast.makeText(this, R.string.low_storage_error, Toast.LENGTH_LONG).show();
+                Log.w(TAG, getString(R.string.low_storage_error));
+            }
         }
 
         FaceView overlay = (FaceView) findViewById(R.id.faceView);
@@ -79,6 +99,6 @@ public class PhotoViewerActivity extends Activity {
 
         // Although detector may be used multiple times for different images, it should be released
         // when it is no longer needed in order to free native resources.
-        detector.release();
+        safeDetector.release();
     }
 }
